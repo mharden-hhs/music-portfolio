@@ -1,3 +1,6 @@
+import { deleteFile } from '../services/drive'
+import UploadButton from '../components/UploadButton'
+import Header from '../components/Header'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSubfolders, getFolderContents } from '../services/drive'
@@ -42,52 +45,123 @@ export default function StudentProfile({ auth, student, userInfo, onSignOut }) {
   }, [activeTab, folders, auth.access_token])
 
   return (
-    
-    <div style={{ maxWidth: '800px', margin: '40px auto', padding: '0 20px' }}>
-      {userInfo?.role === 'teacher' && (
-        <button onClick={() => navigate('/dashboard')}>← Back to Roster</button>
-      )}
-      <button onClick={onSignOut}>Sign Out</button>
-      <h1>{student.name}</h1>
-      <p>{student.instrument} — Grade {student.grade}</p>
-
-      <div style={{ display: 'flex', gap: '10px', margin: '20px 0' }}>
-        {TABS.map(tab => (
+    <div style={{ minHeight: '100vh', background: '#f4f6f9' }}>
+      <Header onSignOut={onSignOut} />
+      <div style={{ maxWidth: '800px', margin: '40px auto', padding: '0 20px' }}>
+        {userInfo?.role === 'teacher' && (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => navigate('/dashboard')}
             style={{
-              padding: '8px 16px',
-              background: activeTab === tab ? '#1a1a2e' : '#eee',
-              color: activeTab === tab ? 'white' : 'black',
+              background: 'transparent',
               border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
+              color: '#1e3a5f',
+              fontSize: '14px',
+              marginBottom: '16px',
+              padding: '0',
+              fontWeight: '600'
             }}
           >
-            {tab}
+            {'<-'} Back to Roster
           </button>
-        ))}
-      </div>
+        )}
 
-      {loading ? (
-        <p>Loading...</p>
-      ) : files.length === 0 ? (
-        <p>No {activeTab.toLowerCase()} found.</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {files.map(file => (
-            <FileItem key={file.id} file={file} activeTab={activeTab} accessToken={auth.access_token} />
-          ))}
+        <div style={{
+          background: 'white',
+          borderRadius: '12px',
+          padding: '28px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
+          marginBottom: '24px'
+        }}>
+          <h1 style={{ color: '#1e3a5f', fontSize: '28px' }}>{student.name}</h1>
+          <p style={{ color: '#666', marginTop: '4px' }}>{student.instrument} — Grade {student.grade}</p>
         </div>
-      )}
+
+       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', justifyContent: 'space-between', alignItems: 'center' }}>
+  <div style={{ display: 'flex', gap: '8px' }}>
+    {TABS.map(tab => (
+      <button
+        key={tab}
+        onClick={() => setActiveTab(tab)}
+        style={{
+          padding: '10px 20px',
+          background: activeTab === tab ? '#1e3a5f' : 'white',
+          color: activeTab === tab ? 'white' : '#1e3a5f',
+          border: '1px solid #1e3a5f',
+          borderRadius: '6px',
+          fontSize: '14px',
+          fontWeight: '600'
+        }}
+      >
+        {tab}
+      </button>
+    ))}
+  </div>
+  {activeTab === 'Recordings' && folders['Recordings'] && (
+    <UploadButton
+      accessToken={auth.access_token}
+      folderId={folders['Recordings']}
+      accept="audio/*"
+      label="Upload Recording"
+      onUploadComplete={() => {
+        setFiles([])
+        setLoading(true)
+        getFolderContents(auth.access_token, folders['Recordings'])
+          .then(data => { setFiles(data); setLoading(false) })
+      }}
+    />
+  )}
+
+  {activeTab === 'Documents' && folders['Documents'] && (
+    <UploadButton
+      accessToken={auth.access_token}
+      folderId={folders['Documents']}
+      accept=".pdf,.doc,.docx"
+      label="Upload Document"
+      onUploadComplete={() => {
+        setFiles([])
+        setLoading(true)
+        getFolderContents(auth.access_token, folders['Documents'])
+          .then(data => { setFiles(data); setLoading(false) })
+      }}
+    />
+  )}
+</div>
+
+        {loading ? (
+          <p style={{ color: '#666' }}>Loading...</p>
+        ) : files.length === 0 ? (
+          <div style={{
+            background: 'white',
+            padding: '40px',
+            borderRadius: '12px',
+            textAlign: 'center',
+            color: '#999',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.07)'
+          }}>
+            No {activeTab.toLowerCase()} found.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {files.map(file => (
+  <FileItem
+    key={file.id}
+    file={file}
+    activeTab={activeTab}
+    accessToken={auth.access_token}
+    onDelete={(deletedId) => setFiles(files.filter(f => f.id !== deletedId))}
+  />
+))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-function FileItem({ file, activeTab, accessToken }) {
+function FileItem({ file, activeTab, accessToken, onDelete }) {
   const [audioUrl, setAudioUrl] = useState(null)
   const [audioLoading, setAudioLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (activeTab !== 'Recordings') return
@@ -102,16 +176,51 @@ function FileItem({ file, activeTab, accessToken }) {
       .catch(() => setAudioLoading(false))
   }, [file.id, activeTab, accessToken])
 
+  async function handleDelete() {
+  if (!window.confirm(`Are you sure you want to delete "${file.name}"? This cannot be undone.`)) return
+  setDeleting(true)
+  try {
+    await deleteFile(accessToken, file.id)
+    onDelete(file.id)
+  } catch (err) {
+    console.error('Delete error:', err)
+    alert('Delete failed. Please try again.')
+    setDeleting(false)
+  }
+}
+
   if (activeTab === 'Recordings') {
     return (
-      <div style={{ padding: '12px', background: '#f5f5f5', borderRadius: '8px' }}>
-        <p style={{ marginBottom: '8px', fontWeight: 'bold' }}>{file.name}</p>
+      <div style={{
+        background: 'white',
+        padding: '16px 20px',
+        borderRadius: '8px',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <p style={{ fontWeight: '600', color: '#1a1a2e', margin: 0 }}>{file.name}</p>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              background: 'transparent',
+              border: '1px solid #cc0000',
+              color: '#cc0000',
+              padding: '4px 12px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              cursor: deleting ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
         {audioLoading ? (
-          <p>Loading audio...</p>
+          <p style={{ color: '#999', fontSize: '14px' }}>Loading audio...</p>
         ) : audioUrl ? (
           <audio controls src={audioUrl} style={{ width: '100%' }} />
         ) : (
-          <a href={file.webViewLink} target="_blank" rel="noreferrer">
+          <a href={file.webViewLink} target="_blank" rel="noreferrer" style={{ color: '#1e3a5f' }}>
             Open in Google Drive
           </a>
         )}
@@ -120,11 +229,36 @@ function FileItem({ file, activeTab, accessToken }) {
   }
 
   return (
-    <div style={{ padding: '12px', background: '#f5f5f5', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span>{file.name}</span>
-      <a href={file.webViewLink} target="_blank" rel="noreferrer">
-        Open
-      </a>
+    <div style={{
+      background: 'white',
+      padding: '16px 20px',
+      borderRadius: '8px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
+    }}>
+      <span style={{ fontWeight: '500', color: '#1a1a2e' }}>{file.name}</span>
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <a href={file.webViewLink} target="_blank" rel="noreferrer" style={{ color: '#1e3a5f', fontWeight: '600', fontSize: '14px', textDecoration: 'none' }}>
+          Open
+        </a>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          style={{
+            background: 'transparent',
+            border: '1px solid #cc0000',
+            color: '#cc0000',
+            padding: '4px 12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            cursor: deleting ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {deleting ? 'Deleting...' : 'Delete'}
+        </button>
+      </div>
     </div>
   )
 }

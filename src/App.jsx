@@ -41,13 +41,10 @@ export default function App() {
     <BrowserRouter basename={basename}>
       <Routes>
         <Route
-          path="/"
-          element={auth ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />}
+          path="/" element={auth ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />}
         />
-        <Route
-  path="/dashboard"
-  element={auth ? <Dashboard userInfo={userInfo} onSelectStudent={setSelectedStudent} onSignOut={handleSignOut} /> : <Navigate to="/" />}
-/>
+        <Route path="/dashboard" element={auth ? <Dashboard userInfo={userInfo} onSelectStudent={setSelectedStudent} onSignOut={handleSignOut} /> : <Navigate to="/" />}
+        />
 <Route
   path="/student/:name"
   element={auth && selectedStudent ? <StudentProfile auth={auth} student={selectedStudent} userInfo={userInfo} onSignOut={handleSignOut} /> : <Navigate to="/dashboard" />}
